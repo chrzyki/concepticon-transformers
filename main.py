@@ -54,6 +54,7 @@ def prepare_data_mappings_only():
 
 
 # Helper to map labels used for training back to Concepticon_IDs
+# e.g.: find_mapping(mappings, int(model.predict(["earlobe"])[0][0]))
 def find_mapping(mappings, label): 
     return [k for k, v in mappings.items() if v == label]
 
