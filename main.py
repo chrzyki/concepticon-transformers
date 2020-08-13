@@ -53,6 +53,11 @@ def prepare_data_mappings_only():
     return data, len(labels), {x: a for a, x in enumerate(labels)}
 
 
+# Helper to map labels used for training back to Concepticon_IDs
+def find_mapping(mappings, label): 
+    return [k for k, v in mappings.items() if v == label]
+
+
 """
 Either use prepare_data_all_glosses() for training/evaluation with all glosses (i.e.
 supersampling) or use prepare_data_mappings_only() for training/evaluation using only
