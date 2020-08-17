@@ -9,7 +9,8 @@ from sklearn.metrics import f1_score, accuracy_score
 from sklearn.model_selection import train_test_split
 
 
-CONCEPTICON_PATH = ""
+SWEEP = True
+CONCEPTICON_PATH = "concepticon-data/"
 
 wandb.init(project="concepticon")
 
@@ -55,8 +56,8 @@ def prepare_data_mappings_only():
 
 # Helper to map labels used for training back to Concepticon_IDs
 # e.g.: find_mapping(mappings, int(model.predict(["earlobe"])[0][0]))
-def find_mapping(mappings, label): 
-    return [k for k, v in mappings.items() if v == label]
+def find_mapping(global_mappings, label):
+    return [k for k, v in global_mappings.items() if v == label]
 
 
 """
@@ -76,11 +77,31 @@ df = df.replace({"labels": mappings})
 
 train_df, eval_df = train_test_split(df, test_size=0.1)
 
+sweep_config = {
+    "name": "concepticon-transformers-sweep",
+    "method": "bayes",
+    "metric": {"name": "mcc", "goal": "maximize"},
+    "parameters": {
+        "learning_rate": {"min": 0, "max": 4e-6},
+        "num_train_epochs": {"min": 1, "max": 4},
+    },
+    "early_terminate": {"type": "hyperband", "min-iter": 6},
+}
+
+sweep_id = wandb.sweep(sweep_config, project="concepticon")
+
 model_args = ClassificationArgs(
-    num_train_epochs=20,
+    num_train_epochs=6,
+    learning_rate=4e-6,
+    no_cache=True if SWEEP else False,
+    no_save=True if SWEEP else False,
+    save_eval_checkpoints=False if SWEEP else True,
+    save_model_every_epoch=False if SWEEP else True,
     overwrite_output_dir=True,
     reprocess_input_data=True,
     evaluate_during_training=True,
+    evaluate_during_training_silent=False,
+    evaluate_during_training_steps=1000,
     wandb_project="concepticon",
     train_batch_size=15,
     eval_batch_size=10,
@@ -89,16 +110,31 @@ model_args = ClassificationArgs(
     early_stopping_metric="mcc",
     early_stopping_metric_minimize=False,
     early_stopping_patience=5,
-    evaluate_during_training_steps=1000,
 )
 
 
-model = ClassificationModel(
-    "xlnet", "xlnet-base-cased", num_labels=num_of_labels, use_cuda=True, args=model_args,
-)
+def train():
+    wandb.init()
+    model_args.wandb_kwargs = {"id": wandb.run.id}
 
-model.train_model(train_df, eval_df=eval_df, f1=f1_multiclass)
+    model = ClassificationModel(
+        "roberta",
+        "roberta-base",
+        num_labels=num_of_labels,
+        use_cuda=True,
+        args=model_args,
+        sweep_config=wandb.config,
+    )
 
-result, model_outputs, wrong_predictions = model.eval_model(
-    eval_df, f1=f1_multiclass, acc=accuracy_score
-)
+    model.train_model(train_df, eval_df=eval_df, f1=f1_multiclass)
+
+    result, model_outputs, wrong_predictions = model.eval_model(
+        eval_df, f1=f1_multiclass, acc=accuracy_score
+    )
+
+    print(result, model_outputs)
+
+    wandb.join()
+
+
+wandb.agent(sweep_id, train)
