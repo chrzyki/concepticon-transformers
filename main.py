@@ -5,14 +5,13 @@ import pandas as pd
 import pyconcepticon
 import wandb
 from simpletransformers.classification import ClassificationModel, ClassificationArgs
-from sklearn.metrics import f1_score, accuracy_score
+from sklearn.metrics import f1_score
 from sklearn.model_selection import train_test_split
 
 
 SWEEP = True
 CONCEPTICON_PATH = "concepticon-data/"
 
-wandb.init(project="concepticon")
 
 logging.basicConfig(level=logging.INFO)
 transformers_logger = logging.getLogger("transformers")
@@ -80,10 +79,9 @@ train_df, eval_df = train_test_split(df, test_size=0.1)
 sweep_config = {
     "name": "concepticon-transformers-sweep",
     "method": "bayes",
-    "metric": {"name": "mcc", "goal": "maximize"},
+    "metric": {"name": "f1", "goal": "maximize"},
     "parameters": {
-        "learning_rate": {"min": 0, "max": 4e-6},
-        "num_train_epochs": {"min": 1, "max": 4},
+        "learning_rate": {"min": 0, "max": 4e-3},
     },
     "early_terminate": {"type": "hyperband", "min-iter": 6},
 }
@@ -91,7 +89,7 @@ sweep_config = {
 sweep_id = wandb.sweep(sweep_config, project="concepticon")
 
 model_args = ClassificationArgs(
-    num_train_epochs=6,
+    num_train_epochs=3,
     learning_rate=4e-6,
     no_cache=True if SWEEP else False,
     no_save=True if SWEEP else False,
@@ -107,7 +105,7 @@ model_args = ClassificationArgs(
     eval_batch_size=10,
     use_early_stopping=True,
     early_stopping_delta=0.01,
-    early_stopping_metric="mcc",
+    early_stopping_metric="f1",
     early_stopping_metric_minimize=False,
     early_stopping_patience=5,
 )
@@ -127,12 +125,6 @@ def train():
     )
 
     model.train_model(train_df, eval_df=eval_df, f1=f1_multiclass)
-
-    result, model_outputs, wrong_predictions = model.eval_model(
-        eval_df, f1=f1_multiclass, acc=accuracy_score
-    )
-
-    print(result, model_outputs)
 
     wandb.join()
 
